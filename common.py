@@ -2,6 +2,7 @@
 import tensorflow as tf
 import os
 import numpy as np
+from PIL import Image
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -78,7 +79,7 @@ def resize_if_need(_img, _label, max_size):
   h = _img.size[1]
   print w, h
 
-  if h <= FLAGS.img_size and w <= FLAGS.img_size:
+  if h <= max_size and w <= max_size:
     # do nothing
     return _img, _label
 

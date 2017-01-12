@@ -7,8 +7,6 @@ import random
 from PIL import Image
 from datetime import datetime, date, time
 import getopt
-from six.moves import urllib
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import common
 
 ###########################################################################
@@ -30,7 +28,8 @@ tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Momentum Optim
 tf.flags.DEFINE_float("beta1", "0.5", "beta1 for Adam optimizer")
 tf.flags.DEFINE_float("momentum", "0.9", "momentum for Momentum Optimizer")
 tf.flags.DEFINE_float("weight_decay", "0.0016", "Learning rate for Momentum Optimizer")
-
+tf.flags.DEFINE_integer("num_threads", "6", "max thread number")
+tf.flags.DEFINE_float("eps", "1e-5", "epsilon for various operation")
 
 def idx2onehot(tensor):
 
@@ -64,11 +63,11 @@ def batch_norm_layer(tensors ,scope_bn, reuse):
       is_training=True,
       reuse=reuse,
       trainable=True,
-      scope=scope_bn)
+      scope=scope_bn, data_format='NCHW')
   return out
 
 def conv_relu(tensor, W, B):
-  conved = tf.nn.conv2d(tensor, W, strides=[1, 1, 3, 3], padding='SAME', data_format='NCHW')
+  conved = tf.nn.conv2d(tensor, W, strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
   biased = tf.nn.bias_add(conved, B, data_format='NCHW')
   relued = tf.nn.relu(biased)
 
@@ -87,43 +86,43 @@ def init_VGG16(pretrained):
   Ws = {
       "1_1":tf.get_variable('conv1_1', shape = [3, 3, FLAGS.channel, 64], initializer=load_weight('conv1_1')),
       "1_2":tf.get_variable('conv1_2', shape = [3, 3, 64, 64], initializer=load_weight('conv1_2')),
- 
+
       "2_1":tf.get_variable('conv2_1', shape = [3, 3, 64, 128], initializer=load_weight('conv2_1')),
       "2_2":tf.get_variable('conv2_2', shape = [3, 3, 128, 128], initializer=load_weight('conv2_2')),
-      
+
       "3_1":tf.get_variable('conv3_1', shape = [3, 3, 128, 256], initializer=load_weight('conv3_1')),
       "3_2":tf.get_variable('conv3_2', shape = [3, 3, 256, 256], initializer=load_weight('conv3_2')),
       "3_3":tf.get_variable('conv3_3', shape = [3, 3, 256, 256], initializer=load_weight('conv3_3')),
-      
+
       "4_1":tf.get_variable('conv4_1', shape = [3, 3, 256, 512], initializer=load_weight('conv4_1')),
       "4_2":tf.get_variable('conv4_2', shape = [3, 3, 512, 512], initializer=load_weight('conv4_2')),
       "4_3":tf.get_variable('conv4_3', shape = [3, 3, 512, 512], initializer=load_weight('conv4_3')),
-      
+
       "5_1":tf.get_variable('conv5_1', shape = [3, 3, 512, 512], initializer=load_weight('conv5_1')),
       "5_2":tf.get_variable('conv5_2', shape = [3, 3, 512, 512], initializer=load_weight('conv5_2')),
       "5_3":tf.get_variable('conv5_3', shape = [3, 3, 512, 512], initializer=load_weight('conv5_3')),
       }
-  
-  Bs = { 
+
+  Bs = {
       "1_1":tf.get_variable('bias1_1', shape = [64], initializer=load_bias('conv1_1')),
       "1_2":tf.get_variable('bias1_2', shape = [64], initializer=load_bias('conv1_2')),
-      
+
       "2_1":tf.get_variable('bias2_1', shape = [128], initializer=load_bias('conv2_1')),
       "2_2":tf.get_variable('bias2_2', shape = [128], initializer=load_bias('conv2_2')),
-      
+
       "3_1":tf.get_variable('bias3_1', shape = [256], initializer=load_bias('conv3_1')),
       "3_2":tf.get_variable('bias3_2', shape = [256], initializer=load_bias('conv3_2')),
       "3_3":tf.get_variable('bias3_3', shape = [256], initializer=load_bias('conv3_3')),
-      
+
       "4_1":tf.get_variable('bias4_1', shape = [512], initializer=load_bias('conv4_1')),
       "4_2":tf.get_variable('bias4_2', shape = [512], initializer=load_bias('conv4_2')),
       "4_3":tf.get_variable('bias4_3', shape = [512], initializer=load_bias('conv4_3')),
-     
+
       "5_1":tf.get_variable('bias5_1', shape = [512], initializer=load_bias('conv5_1')),
       "5_2":tf.get_variable('bias5_2', shape = [512], initializer=load_bias('conv5_2')),
       "5_3":tf.get_variable('bias5_3', shape = [512], initializer=load_bias('conv5_3')),
       }
-  return Ws, Bs 
+  return Ws, Bs
 
 def init_weights():
   def init_with_normal():
@@ -133,19 +132,19 @@ def init_weights():
 
       "6":tf.get_variable('e_conv_6', shape = [7, 7, 512, 4096], initializer=init_with_normal()),
       "7":tf.get_variable('e_conv_7', shape = [1, 1, 4096, 4096], initializer=init_with_normal()),
-      
+
       "8":tf.get_variable('e_conv_8', shape = [1, 1, 4096, 21], initializer=init_with_normal()),
       "9":tf.get_variable('e_conv_9', shape = [1, 1, 512, 21], initializer=init_with_normal()),
       "10":tf.get_variable('e_conv_10', shape = [1, 1, 256, 21], initializer=init_with_normal()),
       }
-  
+
   BEs = {
 
       "6":tf.get_variable('e_bias_6', shape = [4096], initializer=init_with_normal()),
       "7":tf.get_variable('e_bias_7', shape = [4096], initializer=init_with_normal()),
       }
 
-  WDs = { 
+  WDs = {
       "1":tf.get_variable('d_conv_1', shape = [4, 4, 21, 21], initializer=init_with_normal()),
       "2":tf.get_variable('d_conv_2', shape = [4, 4, 21, 21], initializer=init_with_normal()),
       "3":tf.get_variable('d_conv_3', shape = [16, 16, 21, 21], initializer=init_with_normal()),
@@ -175,7 +174,7 @@ def model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
   relued = conv_relu(relued, Ws['4_2'], Bs['4_2'])
   relued = conv_relu(relued, Ws['4_3'], Bs['4_3'])
   pooled4 = tf.nn.max_pool(relued, ksize=mp_ksize, strides=mp_strides, padding='SAME', data_format='NCHW')
-  
+
   relued = conv_relu(pooled4, Ws['5_1'], Bs['5_1'])
   relued = conv_relu(relued, Ws['5_2'], Bs['5_2'])
   relued = conv_relu(relued, Ws['5_3'], Bs['5_3'])
@@ -188,7 +187,7 @@ def model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
   dropouted = tf.nn.dropout(relued, drop_prob)
 
   score_fr = tf.nn.conv2d(dropouted, WEs['8'], strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
- 
+
   score_pool4 = tf.nn.conv2d(pooled4, WEs['9'], strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
   shape_list = tf.shape(score_pool4)
   out_shape = tf.pack(shape_list)
@@ -200,13 +199,13 @@ def model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
   out_shape = tf.pack(shape_list)
   upscore_pool4 = tf.nn.conv2d_transpose(fuse_pool4, WDs['2'], out_shape, strides=[1, 1, 2, 2], padding='SAME', data_format='NCHW')
   fuse_pool3 = tf.add(upscore_pool4, score_pool3)
-  
+
   shape_list = tf.shape(y)
   out_shape = tf.pack(shape_list)
   upscore_pool8 = tf.nn.conv2d_transpose(fuse_pool4, WDs['3'], out_shape, strides=[1, 1, 8, 8], padding='SAME', data_format='NCHW')
 
   final_score = upscore_pool8
-  
+
   return final_score
 
 def get_opt(loss, scope):
@@ -246,7 +245,7 @@ def main(args):
 
   print "thanks to http://www.deeplearningmodel.net/"
   print "download pretrained VGG16 model"
-  commom.maybe_download("./", "VGG_16.npy", "https://lexiondebug.blob.core.windows.net/mlmodel/models/VGG_16.npy") 
+  commom.maybe_download("./", "VGG_16.npy", "https://lexiondebug.blob.core.windows.net/mlmodel/models/VGG_16.npy")
 
   opts, args = getopt.getopt(sys.argv[1:], "s:", ["save_dir="])
 
@@ -264,68 +263,31 @@ def main(args):
   with open(os.path.join(info_path, "train.txt")) as f:
     filelist = f.readlines()
 
-
-  for filename in filelist:
-    print filename
-    filename = filename[:-1] #remove "\n"
-    jpegpath = os.path.join(data_path, filename + ".jpg")
-    labelpath = os.path.join(annot_path, filename + ".png")
-    _img = Image.open(jpegpath)
-    print _img
-    img = np.array(_img)
-    print img
-    print img.shape
-    _label = Image.open(labelpath)
-    #label = np.array(_label).astype(np.uint8)
-    label = np.array(_label)
-    print set(label.reshape(-1))
-    print label.shape, label.dtype
-    
-    test = np.array(_label)
-    print "======================"
-    print test.shape
-    print test
-    print "======================"
-#    for i, color in enumerate(palette):
-#      print i, color 
-    print _label.palette
-    palette = np.array(_label.getpalette()).reshape(-1, 3)
-    print palette.shape, palette.dtype
-    print "np.array(_label.palette):", np.array(_label.palette)
-
-    test = np.ones((100, 100), np.uint8)
-    print "test:", test
-    test_img = Image.fromarray(test, mode='P')
-    test_img.putpalette(palette.reshape(-1))
-    #test_img = test_img.convert('P', palette=_label.pallete)
-    print test_img
-
-    test_img.save("./test.png","png")
-    break;
-
-  colormap, lookup = commom.build_colormap_lookup(255)
+  colormap, palette = common.build_colormap_lookup(256)
 
     # Create a session for running operations in the Graph.
   _x = tf.placeholder(tf.float32)
   _y = tf.placeholder(tf.int32)
 
-  x = _x
+
+  mean = tf.constant(np.array((104.00698793,116.66876762,122.67891434)), dtype=np.float32)
+  x = _x - mean
   y = _y
 
   x = tf.Print(x, [tf.shape(x)], message="x:")
   y = tf.Print(y, [tf.shape(y)], message="y:")
 
   y = idx2onehot(y)
-  
+
   x = tf.transpose(x, perm=[2, 0, 1])
   y = tf.transpose(y, perm=[2, 0, 1])
-  
+
   x = tf.Print(x, [tf.shape(x)], message="x_after:")
   y = tf.Print(y, [tf.shape(y)], message="y_after:")
 
   x = tf.expand_dims(x, 0)
   y = tf.expand_dims(y, 0)
-  
+
   x = tf.Print(x, [tf.shape(x)[:2], tf.shape(x)[2:]], message="x_final:")
   y = tf.Print(y, [tf.shape(y)[:2], tf.shape(y)[2:]], message="y_final:")
 
@@ -387,7 +349,7 @@ def main(args):
         print label.shape, label.dtype
 
         label[label==255]=0
-        # substract _x - mean(_x)
+
         if h < FLAGS.img_size and w < FLAGS.img_size:
           print "!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 
@@ -399,8 +361,6 @@ def main(args):
         #scipy.misc.imsave(filepath, contrastive_sample_vis)
         _img.close()
         _label.close()
-
-        break;
 
         if itr > 1 and itr % 300 == 0:
           print "#######################################################"

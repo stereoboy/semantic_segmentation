@@ -21,7 +21,7 @@ tf.flags.DEFINE_string("directory", "./", "directory for TFRecords")
 tf.flags.DEFINE_string("records", "train_VOC2012", "TFRecords filename")
 tf.flags.DEFINE_integer("max_epoch", "10", "maximum iterations for training")
 tf.flags.DEFINE_integer("max_itrs", "10000", "maximum iterations for training")
-tf.flags.DEFINE_integer("img_size", "128", "sample image size")
+tf.flags.DEFINE_integer("img_size", "500", "sample image size")
 tf.flags.DEFINE_string("save_dir", "fcn_alexnet_voc2012_checkpoints", "dir for checkpoints")
 tf.flags.DEFINE_integer("nrclass", "21", "size of class")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Momentum Optimizer")
@@ -29,6 +29,7 @@ tf.flags.DEFINE_float("beta1", "0.5", "beta1 for Adam optimizer")
 tf.flags.DEFINE_float("momentum", "0.9", "momentum for Momentum Optimizer")
 tf.flags.DEFINE_float("weight_decay", "0.0016", "Learning rate for Momentum Optimizer")
 tf.flags.DEFINE_integer("num_threads", "6", "max thread number")
+tf.flags.DEFINE_float("eps", "1e-5", "epsilon for various operation")
 
 def idx2onehot(tensor):
 
@@ -44,7 +45,7 @@ def onehot2idx(tensor):
   tensor = tf.transpose(tensor, perm=[0, 2, 3, 1])
   tensor = tf.cast(tensor, tf.int32)
   ret = tf.argmax(tensor, axis=[0 ,1 ,2])
-  
+
   return ret
 
 palette = None
@@ -62,11 +63,11 @@ def batch_norm_layer(tensors ,scope_bn, reuse):
       is_training=True,
       reuse=reuse,
       trainable=True,
-      scope=scope_bn)
+      scope=scope_bn, data_format='NCHW')
   return out
 
 def conv_relu(tensor, W, B):
-  conved = tf.nn.conv2d(tensor, W, strides=[1, 1, 3, 3], padding='SAME', data_format='NCHW')
+  conved = tf.nn.conv2d(tensor, W, strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
   biased = tf.nn.bias_add(conved, B, data_format='NCHW')
   relued = tf.nn.relu(biased)
 
@@ -83,27 +84,27 @@ def init_Alexnet(pretrained):
     return tf.constant_initializer(value=pretrained[name][1])
 
   # initialize weights, biases for Encoder
-  Ws = { 
+  Ws = {
       "1":tf.get_variable('conv1', shape = [11, 11, FLAGS.channel, 96], initializer=load_weight('conv1')),
-      
+
       "2":tf.get_variable('conv2', shape = [5, 5, 96, 256], initializer=load_weight('conv2')),
-      
+
       "3":tf.get_variable('conv3', shape = [3, 3, 256, 384], initializer=load_weight('conv3')),
-      
+
       "4":tf.get_variable('conv4', shape = [3, 3, 384, 384], initializer=load_weight('conv4')),
-      
+
       "5":tf.get_variable('conv5', shape = [3, 3, 384, 256], initializer=load_weight('conv5')),
       }
 
-  Bs = { 
+  Bs = {
       "1":tf.get_variable('bias1', shape = [96], initializer=load_bias('conv1')),
-      
+
       "2":tf.get_variable('bias2', shape = [256], initializer=load_bias('conv2')),
-      
+
       "3":tf.get_variable('bias3', shape = [384], initializer=load_bias('conv3')),
-      
+
       "4":tf.get_variable('bias4', shape = [384], initializer=load_bias('conv4')),
-     
+
       "5":tf.get_variable('bias5', shape = [256], initializer=load_bias('conv5')),
       }
 
@@ -112,25 +113,25 @@ def init_Alexnet(pretrained):
 
 def init_weights():
   def init_with_normal():
-    return tf.random_normal_initializer(mean=0.0, stddev=0.02)
+    return tf.truncated_normal_initializer(mean=0.0, stddev=0.02)
 
   WEs = {
 
       "6":tf.get_variable('e_conv_6', shape = [7, 7, 256, 4096], initializer=init_with_normal()),
       "7":tf.get_variable('e_conv_7', shape = [1, 1, 4096, 4096], initializer=init_with_normal()),
-      
+
       "8":tf.get_variable('e_conv_8', shape = [1, 1, 4096, 21], initializer=init_with_normal()),
       "9":tf.get_variable('e_conv_9', shape = [1, 1, 384, 21], initializer=init_with_normal()),
       "10":tf.get_variable('e_conv_10', shape = [1, 1, 384, 21], initializer=init_with_normal()),
       }
-  
+
   BEs = {
 
       "6":tf.get_variable('e_bias_6', shape = [4096], initializer=init_with_normal()),
       "7":tf.get_variable('e_bias_7', shape = [4096], initializer=init_with_normal()),
       }
 
-  WDs = { 
+  WDs = {
       "1":tf.get_variable('d_conv_1', shape = [4, 4, 21, 21], initializer=init_with_normal()),
       "2":tf.get_variable('d_conv_2', shape = [4, 4, 21, 21], initializer=init_with_normal()),
       "3":tf.get_variable('d_conv_3', shape = [16, 16, 21, 21], initializer=init_with_normal()),
@@ -154,7 +155,7 @@ def model_FCN8S_Alexnet(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
 
   relued = conv_relu(pooled3, Ws['4'], Bs['4'])
   pooled4 = tf.nn.max_pool(relued, ksize=mp_ksize, strides=mp_strides, padding='SAME', data_format='NCHW')
-  
+
   relued = conv_relu(pooled4, Ws['5'], Bs['5'])
   pooled5 = tf.nn.max_pool(relued, ksize=mp_ksize, strides=mp_strides, padding='SAME', data_format='NCHW')
 
@@ -165,7 +166,7 @@ def model_FCN8S_Alexnet(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
   dropouted = tf.nn.dropout(relued, drop_prob)
 
   score_fr = tf.nn.conv2d(dropouted, WEs['8'], strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
- 
+
   score_pool4 = tf.nn.conv2d(pooled4, WEs['9'], strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
   shape_list = tf.shape(score_pool4)
   out_shape = tf.pack(shape_list)
@@ -177,13 +178,13 @@ def model_FCN8S_Alexnet(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
   out_shape = tf.pack(shape_list)
   upscore_pool4 = tf.nn.conv2d_transpose(fuse_pool4, WDs['2'], out_shape, strides=[1, 1, 2, 2], padding='SAME', data_format='NCHW')
   fuse_pool3 = tf.add(upscore_pool4, score_pool3)
-  
+
   shape_list = tf.shape(y)
   out_shape = tf.pack(shape_list)
   upscore_pool8 = tf.nn.conv2d_transpose(fuse_pool4, WDs['3'], out_shape, strides=[1, 1, 8, 8], padding='SAME', data_format='NCHW')
 
   final_score = upscore_pool8
-  
+
   return final_score
 
 def get_opt(loss, scope):
@@ -221,7 +222,7 @@ def main(args):
 
   print "thanks to https://github.com/guerzh/tf_weights"
   print "download pretrained Alexnet model"
-  common.maybe_download("./", "bvlc_alexnet.npy", "http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/bvlc_alexnet.npy") 
+  common.maybe_download("./", "bvlc_alexnet.npy", "http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/bvlc_alexnet.npy")
 
   opts, args = getopt.getopt(sys.argv[1:], "s:", ["save_dir="])
 
@@ -238,30 +239,32 @@ def main(args):
 
   with open(os.path.join(info_path, "train.txt")) as f:
     filelist = f.readlines()
-  
+
   colormap, palette = common.build_colormap_lookup(256)
 
     # Create a session for running operations in the Graph.
   _x = tf.placeholder(tf.float32)
   _y = tf.placeholder(tf.int32)
 
-  x = _x
+  # substract _x - mean(_x)
+  mean = tf.constant(np.array((104.00698793,116.66876762,122.67891434)), dtype=np.float32)
+  x = _x - mean
   y = _y
 
   x = tf.Print(x, [tf.shape(x)], message="x:")
   y = tf.Print(y, [tf.shape(y)], message="y:")
 
   y = idx2onehot(y)
-  
+
   x = tf.transpose(x, perm=[2, 0, 1])
   y = tf.transpose(y, perm=[2, 0, 1])
-  
+
   x = tf.Print(x, [tf.shape(x)], message="x_after:")
   y = tf.Print(y, [tf.shape(y)], message="y_after:")
 
   x = tf.expand_dims(x, 0)
   y = tf.expand_dims(y, 0)
-  
+
   x = tf.Print(x, [tf.shape(x)[:2], tf.shape(x)[2:]], message="x_final:")
   y = tf.Print(y, [tf.shape(y)[:2], tf.shape(y)[2:]], message="y_final:")
 
@@ -281,7 +284,7 @@ def main(args):
 
   init_op = tf.group(tf.global_variables_initializer(),
                      tf.local_variables_initializer())
-  
+
   num_threads = FLAGS.num_threads
   with tf.Session(config=tf.ConfigProto(intra_op_parallelism_threads=num_threads)) as sess:
     # Initialize the variables (the trained variables and the
@@ -317,8 +320,6 @@ def main(args):
         img = np.array(img)
         label = np.array(label)
 
-        img -= np.array((104.00698793,116.66876762,122.67891434))
-
         #img = img.transpose(2, 0, 1)
         h = img.shape[0]
         w = img.shape[1]
@@ -328,21 +329,17 @@ def main(args):
         print label.shape, label.dtype
 
         label[label==255]=0
-        # substract _x - mean(_x)
         if h < FLAGS.img_size and w < FLAGS.img_size:
           print "!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 
         feed_dict = {_x: img, _y: label}
         #_= sess.run([opt], feed_dict=feed_dict)
         images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
-        
+
         filepath = os.path.join(save_dir, filename + "_est.png")
         #scipy.misc.imsave(filepath, contrastive_sample_vis)
         _img.close()
         _label.close()
-
-        
-        break;
 
         if itr > 1 and itr % 300 == 0:
           print "#######################################################"
