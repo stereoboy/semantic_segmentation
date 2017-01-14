@@ -23,7 +23,7 @@ tf.flags.DEFINE_integer("max_epoch", "10", "maximum iterations for training")
 tf.flags.DEFINE_integer("max_itrs", "10000", "maximum iterations for training")
 tf.flags.DEFINE_integer("img_size", "500", "sample image size")
 tf.flags.DEFINE_string("save_dir", "fcn_voc2012_checkpoints", "dir for checkpoints")
-tf.flags.DEFINE_integer("nrclass", "21", "size of class")
+tf.flags.DEFINE_integer("nclass", "21", "size of class")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Momentum Optimizer")
 tf.flags.DEFINE_float("beta1", "0.5", "beta1 for Adam optimizer")
 tf.flags.DEFINE_float("momentum", "0.9", "momentum for Momentum Optimizer")
@@ -34,9 +34,9 @@ tf.flags.DEFINE_float("eps", "1e-5", "epsilon for various operation")
 def idx2onehot(tensor):
 
   shape = tf.shape(tensor)
-  onehot = tf.constant(np.eye(FLAGS.nrclass, dtype=np.float32))
+  onehot = tf.constant(np.eye(FLAGS.nclass, dtype=np.float32))
   ret = tf.nn.embedding_lookup(onehot, tensor)
-  #ret = tf.reshape(ret, shape=tf.pack([shape[0], shape[1], shape[2], FLAGS.nrclass]))
+  #ret = tf.reshape(ret, shape=tf.pack([shape[0], shape[1], shape[2], FLAGS.nclass]))
 
   return ret
 
@@ -133,9 +133,9 @@ def init_weights():
       "6":tf.get_variable('e_conv_6', shape = [7, 7, 512, 4096], initializer=init_with_normal()),
       "7":tf.get_variable('e_conv_7', shape = [1, 1, 4096, 4096], initializer=init_with_normal()),
 
-      "8":tf.get_variable('e_conv_8', shape = [1, 1, 4096, 21], initializer=init_with_normal()),
-      "9":tf.get_variable('e_conv_9', shape = [1, 1, 512, 21], initializer=init_with_normal()),
-      "10":tf.get_variable('e_conv_10', shape = [1, 1, 256, 21], initializer=init_with_normal()),
+      "8":tf.get_variable('e_conv_8', shape = [1, 1, 4096, FLAGS.nclass], initializer=init_with_normal()),
+      "9":tf.get_variable('e_conv_9', shape = [1, 1, 512, FLAGS.nclass], initializer=init_with_normal()),
+      "10":tf.get_variable('e_conv_10', shape = [1, 1, 256, FLAGS.nclass], initializer=init_with_normal()),
       }
 
   BEs = {
@@ -145,9 +145,9 @@ def init_weights():
       }
 
   WDs = {
-      "1":tf.get_variable('d_conv_1', shape = [4, 4, 21, 21], initializer=init_with_normal()),
-      "2":tf.get_variable('d_conv_2', shape = [4, 4, 21, 21], initializer=init_with_normal()),
-      "3":tf.get_variable('d_conv_3', shape = [16, 16, 21, 21], initializer=init_with_normal()),
+      "1":tf.get_variable('d_conv_1', shape = [4, 4, FLAGS.nclass, FLAGS.nclass], initializer=init_with_normal()),
+      "2":tf.get_variable('d_conv_2', shape = [4, 4, FLAGS.nclass, FLAGS.nclass], initializer=init_with_normal()),
+      "3":tf.get_variable('d_conv_3', shape = [16, 16, FLAGS.nclass, FLAGS.nclass], initializer=init_with_normal()),
       }
   return WEs, BEs, WDs
 
