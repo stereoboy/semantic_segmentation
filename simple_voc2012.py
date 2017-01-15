@@ -22,7 +22,7 @@ tf.flags.DEFINE_string("directory", "./", "directory for TFRecords")
 tf.flags.DEFINE_string("records", "train_VOC2012", "TFRecords filename")
 tf.flags.DEFINE_integer("max_epoch", "10", "maximum iterations for training")
 tf.flags.DEFINE_integer("max_itrs", "10000", "maximum iterations for training")
-tf.flags.DEFINE_integer("img_size", "256", "sample image size")
+tf.flags.DEFINE_integer("img_size", "500", "sample image size")
 tf.flags.DEFINE_string("save_dir", "simple_voc2012_checkpoints", "dir for checkpoints")
 tf.flags.DEFINE_integer("nclass", "33", "size of class")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Momentum Optimizer")
@@ -339,7 +339,8 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   deconved = tf.nn.bias_add(deconved, BDs[5], data_format='NCHW')
   #normalized = batch_norm_layer(deconved, "discriminator/bnd4", False)
   normalized = deconved
-  relued = tf.nn.relu(normalized)
+  #relued = tf.nn.relu(normalized)
+  relued = normalized
 
   final_score = relued
 
@@ -432,6 +433,10 @@ def main(args):
 
   out = model_tiny(x, y, WEs, BEs, WDs, BDs)
   out = tf.transpose(out, perm=[0, 2, 3, 1])
+
+  valid = model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob=1.0)
+  valid = tf.transpose(valid, perm=[0, 2, 3, 1])
+
   y = tf.transpose(y, perm=[0, 2, 3, 1])
 
   #y = tf.Print(y, [tf.shape(y)[:2], tf.shape(y)[2:]], message="y_restored:")
@@ -446,9 +451,6 @@ def main(args):
 
   opt = get_opt(loss, "Tiny")
 
-  valid = model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob=1.0)
-  valid = tf.transpose(valid, perm=[0, 2, 3, 1])
-
   temp = tf.squeeze(out, axis=[0])
   #temp = print_shape(temp, "temp")
   indexed_out = tf.argmax(temp, 2)
@@ -457,6 +459,9 @@ def main(args):
 
   init_op = tf.group(tf.global_variables_initializer(),
                      tf.local_variables_initializer())
+
+  start = datetime.now()
+  print "Start: ",  start.strftime("%Y-%m-%d_%H-%M-%S")
 
   num_threads = FLAGS.num_threads
   with tf.Session(config=tf.ConfigProto(intra_op_parallelism_threads=num_threads)) as sess:
@@ -499,6 +504,9 @@ def main(args):
 
         #images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
         restored_val, indexed_out_val = sess.run([restored, indexed_out], feed_dict=feed_dict)
+
+        current = datetime.now()
+        print "\telapsed:", current - start
 
         label_vis = common.convert_label2bgr(label, palette)
         #restored_vis = common.convert_label2bgr(restored_val, palette)
