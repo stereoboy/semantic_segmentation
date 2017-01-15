@@ -81,7 +81,6 @@ def build_colormap_lookup(N):
 
 def save_label_png(filepath, array, palette):
 
-  print "test:", test
   img = Image.fromarray(array, mode='P')
   img.putpalette(palette.reshape(-1))
   img.save("./test.png","png")
@@ -261,7 +260,7 @@ class PASCALCONTEXT(DataCenter):
       else:
         lookup[k] = 0
 
-    print lookup
+    #print lookup
 
     self.lookup = lookup
         
@@ -306,7 +305,7 @@ class PASCALCONTEXT(DataCenter):
     label = np.fromiter([self.lookup[x] for x in label.reshape(-1)], np.uint16).reshape(h,w)
     
     label_set = set(label.reshape(-1))
-    print "Labels:", map(lambda x:self.label33_table[x], label_set)
+    #print "Labels:", map(lambda x:self.label33_table[x], label_set)
     #print "Color:", map(lambda x:hidden_palette[x], label_set)
 
     # resize
@@ -329,3 +328,17 @@ class PASCALCONTEXT(DataCenter):
 
     
     return (filename, img, label)
+
+def idx2onehot(tensor, nclass):
+
+  shape = tf.shape(tensor)
+  onehot = tf.constant(np.eye(nclass, dtype=np.float32))
+  ret = tf.nn.embedding_lookup(onehot, tensor)
+  #ret = tf.reshape(ret, shape=tf.pack([shape[0], shape[1], shape[2], FLAGS.nclass]))
+
+  return ret
+
+def print_shape(tensor, name):
+  tensor = tf.Print(tensor, [tf.shape(tensor)[:2], tf.shape(tensor)[2:]], message=name+":")
+  return tensor
+

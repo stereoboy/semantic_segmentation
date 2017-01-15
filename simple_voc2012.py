@@ -32,15 +32,6 @@ tf.flags.DEFINE_float("weight_decay", "0.0016", "Learning rate for Momentum Opti
 tf.flags.DEFINE_integer("num_threads", "6", "max thread number")
 tf.flags.DEFINE_float("eps", "1e-5", "epsilon for various operation")
 
-def idx2onehot(tensor):
-
-  shape = tf.shape(tensor)
-  onehot = tf.constant(np.eye(FLAGS.nclass, dtype=np.float32))
-  ret = tf.nn.embedding_lookup(onehot, tensor)
-  #ret = tf.reshape(ret, shape=tf.pack([shape[0], shape[1], shape[2], FLAGS.nclass]))
-
-  return ret
-
 def onehot2idx(tensor):
 
   tensor = tf.transpose(tensor, perm=[0, 2, 3, 1])
@@ -204,12 +195,12 @@ def model(x, y, Ws, Bs, WDs, drop_prob = 0.5):
 def init_enc():
   def init_with_normal():
     return tf.truncated_normal_initializer(mean=0.0, stddev=0.1)
-  
+
   def init_bias():
     return tf.constant_initializer(value=0.1)
 
   # initialize weights, biases for Encoder
-  ksize = 7 
+  ksize = 7
   WEs = {
       1:tf.get_variable('e_conv1', shape = [ksize, ksize, FLAGS.channel, 64], initializer=init_with_normal()),
 
@@ -242,7 +233,7 @@ def init_dec():
   def init_bias():
     return tf.constant_initializer(value=0.1)
 
-  ksize = 7 
+  ksize = 7
   WDs = {
       1:tf.get_variable('d_conv1', shape = [ksize, ksize, 256, 256], initializer=init_with_normal()),
 
@@ -254,7 +245,7 @@ def init_dec():
 
       5:tf.get_variable('d_conv5', shape = [ksize, ksize, FLAGS.nclass, 64], initializer=init_with_normal()),
       }
-  
+
   BDs = {
       1:tf.get_variable('d_bias1', shape = [256], initializer=init_bias()),
 
@@ -268,14 +259,7 @@ def init_dec():
       }
   return WDs, BDs
 
-
-def print_shape(tensor, name):
-  tensor = tf.Print(tensor, [tf.shape(tensor)[:2], tf.shape(tensor)[2:]], message=name+":")
-  return tensor
-  
 def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
-  print WEs
-  print WDs
 
   def batch_normalization(tensor):
     mean, var = tf.nn.moments(tensor, [0, 1, 2])
@@ -292,7 +276,7 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   # skip batch normalization by DCGAN
   #normalized = batch_normalization(conved)
   encoded1 = leaky_relu(conved)
-  
+
   conved = tf.nn.conv2d(encoded1, WEs[2], strides=mp_strides, padding='SAME', data_format='NCHW')
   conved = tf.nn.bias_add(conved, BEs[2], data_format='NCHW')
   normalized = batch_normalization(conved)
@@ -312,7 +296,7 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   conved = tf.nn.bias_add(conved, BEs[5], data_format='NCHW')
   normalized = batch_normalization(conved)
   encoded5 = leaky_relu(normalized)
-  
+
   shape_list = tf.shape(encoded4)
   out_shape = tf.pack([shape_list[0], 256, shape_list[2], shape_list[3]])
   deconved = tf.nn.conv2d_transpose(encoded5, WDs[1], out_shape, strides=mp_strides, padding='SAME', data_format='NCHW')
@@ -320,7 +304,8 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   #normalized = batch_norm_layer(deconved, "discriminator/bnd1", False)
   normalized = batch_normalization(deconved)
   relued = tf.nn.relu(normalized)
-  
+  relued = tf.add(normalized, encoded4)
+
   shape_list = tf.shape(encoded3)
   out_shape = tf.pack([shape_list[0], 256, shape_list[2], shape_list[3]])
   deconved = tf.nn.conv2d_transpose(relued, WDs[2], out_shape, strides=mp_strides, padding='SAME', data_format='NCHW')
@@ -328,6 +313,7 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   #normalized = batch_norm_layer(deconved, "discriminator/bnd2", False)
   normalized = batch_normalization(deconved)
   relued = tf.nn.relu(normalized)
+  relued = tf.add(normalized, encoded3)
 
   shape_list = tf.shape(encoded2)
   out_shape = tf.pack([shape_list[0], 128, shape_list[2], shape_list[3]])
@@ -336,7 +322,8 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   #normalized = batch_norm_layer(deconved, "discriminator/bnd3", False)
   normalized = batch_normalization(deconved)
   relued = tf.nn.relu(normalized)
-  
+  #relued = tf.add(normalized, encoded2)
+
   shape_list = tf.shape(encoded1)
   out_shape = tf.pack([shape_list[0], 64, shape_list[2], shape_list[3]])
   deconved = tf.nn.conv2d_transpose(relued, WDs[4], out_shape, strides=mp_strides, padding='SAME', data_format='NCHW')
@@ -344,6 +331,7 @@ def model_tiny(x, y, WEs, BEs, WDs, BDs, drop_prob = 0.5):
   #normalized = batch_norm_layer(deconved, "discriminator/bnd4", False)
   normalized = batch_normalization(deconved)
   relued = tf.nn.relu(normalized)
+  #relued = tf.add(normalized, encoded1)
 
   shape_list = tf.shape(y)
   out_shape = tf.pack([shape_list[0], FLAGS.nclass, shape_list[2], shape_list[3]])
@@ -422,7 +410,7 @@ def main(args):
   #x = tf.Print(x, [tf.shape(x)], message="x:")
   #y = tf.Print(y, [tf.shape(y)], message="y:")
 
-  y = idx2onehot(y)
+  y = common.idx2onehot(y, FLAGS.nclass)
 
   x = tf.transpose(x, perm=[2, 0, 1])
   y = tf.transpose(y, perm=[2, 0, 1])
@@ -445,7 +433,7 @@ def main(args):
   out = model_tiny(x, y, WEs, BEs, WDs, BDs)
   out = tf.transpose(out, perm=[0, 2, 3, 1])
   y = tf.transpose(y, perm=[0, 2, 3, 1])
-  
+
   #y = tf.Print(y, [tf.shape(y)[:2], tf.shape(y)[2:]], message="y_restored:")
   #out = tf.Print(out, [tf.shape(out)[:2], tf.shape(out)[2:]], message="out_restored:")
 
@@ -462,8 +450,10 @@ def main(args):
   valid = tf.transpose(valid, perm=[0, 2, 3, 1])
 
   temp = tf.squeeze(out, axis=[0])
-  #temp = print_shape(temp, "temp") 
+  #temp = print_shape(temp, "temp")
   indexed_out = tf.argmax(temp, 2)
+
+  accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.cast(indexed_out, tf.int32), _y), tf.float32))
 
   init_op = tf.group(tf.global_variables_initializer(),
                      tf.local_variables_initializer())
@@ -491,7 +481,7 @@ def main(args):
       datacenter.shuffle()
       for itr in range(datacenter.size):
         print "==================================================================="
-        print "[", epoch, "]", "%d/%d"%(itr, datacenter.size) 
+        print "[", epoch, "]", "%d/%d"%(itr, datacenter.size)
         (filename, img, label) = datacenter.getPair(itr)
 
         h = img.shape[0]
@@ -503,7 +493,9 @@ def main(args):
 
         feed_dict = {_x: img, _y: label}
         _, loss_val = sess.run([opt, loss], feed_dict=feed_dict)
+        accuracy_val = sess.run([accuracy], feed_dict=feed_dict)
         print "\tloss:", loss_val
+        print "\taccuracy:", accuracy_val
 
         #images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
         restored_val, indexed_out_val = sess.run([restored, indexed_out], feed_dict=feed_dict)
@@ -513,14 +505,14 @@ def main(args):
         out_vis = common.convert_label2bgr(indexed_out_val, palette)
         cv2.imshow('visualization', common.img_listup([img, label_vis, out_vis]))
         cv2.waitKey(2000)
-        
+
         filepath = os.path.join(save_dir, filename + "_est.png")
         #scipy.misc.imsave(filepath, contrastive_sample_vis)
 
         if itr > 1 and itr % 300 == 0:
           print "#######################################################"
           saver.save(sess, checkpoint)
-    
+
   cv2.destroyAllWindows()
 
 if __name__ == "__main__":

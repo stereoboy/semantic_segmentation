@@ -8,6 +8,7 @@ from PIL import Image
 from datetime import datetime, date, time
 import getopt
 import common
+import cv2
 
 ###########################################################################
 #
@@ -31,15 +32,6 @@ tf.flags.DEFINE_float("weight_decay", "0.0016", "Learning rate for Momentum Opti
 tf.flags.DEFINE_integer("num_threads", "6", "max thread number")
 tf.flags.DEFINE_float("eps", "1e-5", "epsilon for various operation")
 
-def idx2onehot(tensor):
-
-  shape = tf.shape(tensor)
-  onehot = tf.constant(np.eye(FLAGS.nclass, dtype=np.float32))
-  ret = tf.nn.embedding_lookup(onehot, tensor)
-  #ret = tf.reshape(ret, shape=tf.pack([shape[0], shape[1], shape[2], FLAGS.nclass]))
-
-  return ret
-
 def onehot2idx(tensor):
 
   tensor = tf.transpose(tensor, perm=[0, 2, 3, 1])
@@ -48,7 +40,6 @@ def onehot2idx(tensor):
 
   return ret
 
-palette = None
 def save_label_png(filepath, array):
 
     print "test:", test
@@ -245,7 +236,7 @@ def main(args):
 
   print "thanks to http://www.deeplearningmodel.net/"
   print "download pretrained VGG16 model"
-  commom.maybe_download("./", "VGG_16.npy", "https://lexiondebug.blob.core.windows.net/mlmodel/models/VGG_16.npy")
+  common.maybe_download("./", "VGG_16.npy", "https://lexiondebug.blob.core.windows.net/mlmodel/models/VGG_16.npy")
 
   opts, args = getopt.getopt(sys.argv[1:], "s:", ["save_dir="])
 
@@ -256,14 +247,11 @@ def main(args):
       save_dir=arg
       print "checkpoint dir:", save_dir
 
-  info_path="../data/VOCdevkit/VOC2012/ImageSets/Segmentation/"
-  data_path="../data/VOCdevkit/VOC2012/JPEGImages/"
-  annot_path="../data/VOCdevkit/VOC2012/SegmentationClass/"
-
-  with open(os.path.join(info_path, "train.txt")) as f:
-    filelist = f.readlines()
-
   colormap, palette = common.build_colormap_lookup(256)
+
+  #datacenter = common.VOC2012(FLAGS.img_size)
+  #datacenter = common.CamVid(FLAGS.img_size)
+  datacenter = common.PASCALCONTEXT(FLAGS.img_size)
 
     # Create a session for running operations in the Graph.
   _x = tf.placeholder(tf.float32)
@@ -274,24 +262,15 @@ def main(args):
   x = _x - mean
   y = _y
 
-  x = tf.Print(x, [tf.shape(x)], message="x:")
-  y = tf.Print(y, [tf.shape(y)], message="y:")
-
-  y = idx2onehot(y)
+  y = common.idx2onehot(y, FLAGS.nclass)
 
   x = tf.transpose(x, perm=[2, 0, 1])
   y = tf.transpose(y, perm=[2, 0, 1])
 
-  x = tf.Print(x, [tf.shape(x)], message="x_after:")
-  y = tf.Print(y, [tf.shape(y)], message="y_after:")
-
   x = tf.expand_dims(x, 0)
   y = tf.expand_dims(y, 0)
 
-  x = tf.Print(x, [tf.shape(x)[:2], tf.shape(x)[2:]], message="x_final:")
-  y = tf.Print(y, [tf.shape(y)[:2], tf.shape(y)[2:]], message="y_final:")
-
-  pretrained = commom.load_pretrained("./VGG_16.npy")
+  pretrained = common.load_pretrained("./VGG_16.npy")
 
   with tf.variable_scope("VGG16") as scope:
     Ws, Bs = init_VGG16(pretrained)
@@ -299,11 +278,22 @@ def main(args):
     WEs, BEs, WDs = init_weights()
 
   out = model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs)
+  out = tf.transpose(out, perm=[0, 2, 3, 1])
+  y = tf.transpose(y, perm=[0, 2, 3, 1])
 
-  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(out, y))
+  logits = tf.reshape(out, shape=[-1, FLAGS.nclass])
+  targets = tf.reshape(y, shape=[-1, FLAGS.nclass])
+  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, targets))
 
   opt = get_opt(loss, "FCN8S")
+
   valid = model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob=1.0)
+  valid = tf.transpose(valid, perm=[0, 2, 3, 1])
+
+  temp = tf.squeeze(out, axis=[0])
+  indexed_out = tf.argmax(temp, 2)
+
+  accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.cast(indexed_out, tf.int32), _y), tf.float32))
 
   init_op = tf.group(tf.global_variables_initializer(),
                      tf.local_variables_initializer())
@@ -325,46 +315,43 @@ def main(args):
       checkpoint = os.path.join(save_dir, filename)
 
     for epoch in range(FLAGS.max_epoch):
-      print "==================================================================="
-      random.shuffle(filelist)
-      for itr, filename in enumerate(filelist):
-        print "---------------------------------------------------------------------"
-        print "  ", filename[:-1]
-        filename = filename[:-1] #remove "\n"
-        jpegpath = os.path.join(data_path, filename + ".jpg")
-        labelpath = os.path.join(annot_path, filename + ".png")
+      print "#####################################################################"
+      datacenter.shuffle()
+      for itr in range(datacenter.size):
+        print "==================================================================="
+        print "[", epoch, "]", "%d/%d"%(itr, datacenter.size)
+        (filename, img, label) = datacenter.getPair(itr)
 
-        _img = Image.open(jpegpath)
-        _label = Image.open(labelpath)
-
-        img, label = common.resize_if_need(_img, _label, FLAGS.img_size)
-        img = np.array(img)
-        label = np.array(label)
-
-        #img = img.transpose(2, 0, 1)
         h = img.shape[0]
         w = img.shape[1]
         c = img.shape[2]
-        print img.shape
-        print label.shape, label.dtype
+        print "  ", filename, img.shape, label.shape
 
-        label[label==255]=0
-
-        if h < FLAGS.img_size and w < FLAGS.img_size:
-          print "!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        #label[label==255]=0
 
         feed_dict = {_x: img, _y: label}
-        _= sess.run([opt], feed_dict=feed_dict)
-        images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
+        _, loss_val = sess.run([opt, loss], feed_dict=feed_dict)
+        accuracy_val = sess.run([accuracy], feed_dict=feed_dict)
+        print "\tloss:", loss_val
+        print "\taccuracy:", accuracy_val
+
+        #images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
+        restored_val, indexed_out_val = sess.run([restored, indexed_out], feed_dict=feed_dict)
+
+        label_vis = common.convert_label2bgr(label, palette)
+        #restored_vis = common.convert_label2bgr(restored_val, palette)
+        out_vis = common.convert_label2bgr(indexed_out_val, palette)
+        cv2.imshow('visualization', common.img_listup([img, label_vis, out_vis]))
+        cv2.waitKey(5)
 
         filepath = os.path.join(save_dir, filename + "_est.png")
         #scipy.misc.imsave(filepath, contrastive_sample_vis)
-        _img.close()
-        _label.close()
 
         if itr > 1 and itr % 300 == 0:
           print "#######################################################"
           saver.save(sess, checkpoint)
+
+  cv2.destroyAllWindows()
 
 if __name__ == "__main__":
   tf.app.run()
