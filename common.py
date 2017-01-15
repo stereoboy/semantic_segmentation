@@ -123,7 +123,8 @@ def img_listup(imgs):
   for i in range(size):
     out[:, offset: offset + w] = imgs[i]
     offset += w
-  
+ 
+  out = cv2.resize(cv2.cvtColor(out, cv2.COLOR_RGB2BGR), (out.shape[1]/2, out.shape[0]/2))
   return out
 
 class DataCenter(object):

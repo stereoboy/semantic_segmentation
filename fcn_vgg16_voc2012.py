@@ -24,7 +24,7 @@ tf.flags.DEFINE_integer("max_epoch", "10", "maximum iterations for training")
 tf.flags.DEFINE_integer("max_itrs", "10000", "maximum iterations for training")
 tf.flags.DEFINE_integer("img_size", "500", "sample image size")
 tf.flags.DEFINE_string("save_dir", "fcn_voc2012_checkpoints", "dir for checkpoints")
-tf.flags.DEFINE_integer("nclass", "21", "size of class")
+tf.flags.DEFINE_integer("nclass", "33", "size of class")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Momentum Optimizer")
 tf.flags.DEFINE_float("beta1", "0.5", "beta1 for Adam optimizer")
 tf.flags.DEFINE_float("momentum", "0.9", "momentum for Momentum Optimizer")
@@ -117,7 +117,7 @@ def init_VGG16(pretrained):
 
 def init_weights():
   def init_with_normal():
-    return tf.random_normal_initializer(mean=0.0, stddev=0.02)
+    return tf.truncated_normal_initializer(mean=0.0, stddev=0.1)
 
   WEs = {
 
@@ -193,7 +193,7 @@ def model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
 
   shape_list = tf.shape(y)
   out_shape = tf.pack(shape_list)
-  upscore_pool8 = tf.nn.conv2d_transpose(fuse_pool4, WDs['3'], out_shape, strides=[1, 1, 8, 8], padding='SAME', data_format='NCHW')
+  upscore_pool8 = tf.nn.conv2d_transpose(fuse_pool3, WDs['3'], out_shape, strides=[1, 1, 8, 8], padding='SAME', data_format='NCHW')
 
   final_score = upscore_pool8
 
@@ -204,7 +204,6 @@ def get_opt(loss, scope):
 
   print "============================"
   print scope
-  print var_list
   for item in var_list:
     print item.name
   # Optimizer: set up a variable that's incremented once per batch and
@@ -226,7 +225,6 @@ def get_opt(loss, scope):
 #  return optimizer
   optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate, beta1=FLAGS.beta1)
   grads = optimizer.compute_gradients(loss, var_list=var_list)
-  print grads
   return optimizer.apply_gradients(grads)
 
 #
@@ -279,6 +277,10 @@ def main(args):
 
   out = model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs)
   out = tf.transpose(out, perm=[0, 2, 3, 1])
+
+  valid = model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob=1.0)
+  valid = tf.transpose(valid, perm=[0, 2, 3, 1])
+
   y = tf.transpose(y, perm=[0, 2, 3, 1])
 
   logits = tf.reshape(out, shape=[-1, FLAGS.nclass])
@@ -287,9 +289,6 @@ def main(args):
 
   opt = get_opt(loss, "FCN8S")
 
-  valid = model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob=1.0)
-  valid = tf.transpose(valid, perm=[0, 2, 3, 1])
-
   temp = tf.squeeze(out, axis=[0])
   indexed_out = tf.argmax(temp, 2)
 
@@ -297,6 +296,10 @@ def main(args):
 
   init_op = tf.group(tf.global_variables_initializer(),
                      tf.local_variables_initializer())
+  
+  start = datetime.now()
+  print "Start: ",  start.strftime("%Y-%m-%d_%H-%M-%S")
+
   with tf.Session() as sess:
     # Initialize the variables (the trained variables and the
     sess.run(init_op)
@@ -336,16 +339,20 @@ def main(args):
         print "\taccuracy:", accuracy_val
 
         #images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
-        restored_val, indexed_out_val = sess.run([restored, indexed_out], feed_dict=feed_dict)
+        indexed_out_val = sess.run(indexed_out, feed_dict=feed_dict)
+        
+        current = datetime.now()
+        print "\telapsed:", current - start
 
+        #if itr %10 == 0:
         label_vis = common.convert_label2bgr(label, palette)
         #restored_vis = common.convert_label2bgr(restored_val, palette)
         out_vis = common.convert_label2bgr(indexed_out_val, palette)
         cv2.imshow('visualization', common.img_listup([img, label_vis, out_vis]))
-        cv2.waitKey(5)
 
         filepath = os.path.join(save_dir, filename + "_est.png")
-        #scipy.misc.imsave(filepath, contrastive_sample_vis)
+        #scipy.misc.imsave(filepath, out_vis)
+        cv2.waitKey(5)
 
         if itr > 1 and itr % 300 == 0:
           print "#######################################################"
