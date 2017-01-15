@@ -344,14 +344,17 @@ def main(args):
         current = datetime.now()
         print "\telapsed:", current - start
 
-        #if itr %10 == 0:
-        label_vis = common.convert_label2bgr(label, palette)
-        #restored_vis = common.convert_label2bgr(restored_val, palette)
-        out_vis = common.convert_label2bgr(indexed_out_val, palette)
-        cv2.imshow('visualization', common.img_listup([img, label_vis, out_vis]))
+        if itr %10 == 0:
+          label_vis = common.convert_label2bgr(label, palette)
+          #restored_vis = common.convert_label2bgr(restored_val, palette)
+          out_vis = common.convert_label2bgr(indexed_out_val, palette)
+          total = common.img_listup([cv2.cvtColor(img, cv2.COLOR_RGB2BGR), label_vis, out_vis])
+          total_vis = cv2.resize(total, (total.shape[1]/2, total.shape[0]/2))
+          cv2.imshow('visualization', total_vis)
 
-        filepath = os.path.join(save_dir, filename + "_est.png")
-        #scipy.misc.imsave(filepath, out_vis)
+          if itr%200 == 0:
+            filepath = os.path.join(save_dir, os.path.splitext(filename)[0] + "_est.png")
+            scipy.misc.imsave(filepath, total)
         cv2.waitKey(5)
 
         if itr > 1 and itr % 300 == 0:
