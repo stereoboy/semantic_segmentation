@@ -24,7 +24,7 @@ tf.flags.DEFINE_integer("max_epoch", "10", "maximum iterations for training")
 tf.flags.DEFINE_integer("max_itrs", "10000", "maximum iterations for training")
 tf.flags.DEFINE_integer("img_size", "500", "sample image size")
 tf.flags.DEFINE_string("save_dir", "fcn_voc2012_checkpoints", "dir for checkpoints")
-tf.flags.DEFINE_integer("nclass", "33", "size of class")
+tf.flags.DEFINE_integer("nclass", "21", "size of class")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Momentum Optimizer")
 tf.flags.DEFINE_float("beta1", "0.5", "beta1 for Adam optimizer")
 tf.flags.DEFINE_float("momentum", "0.9", "momentum for Momentum Optimizer")
@@ -247,9 +247,9 @@ def main(args):
 
   colormap, palette = common.build_colormap_lookup(256)
 
-  #datacenter = common.VOC2012(FLAGS.img_size)
+  datacenter = common.VOC2012(FLAGS.img_size)
   #datacenter = common.CamVid(FLAGS.img_size)
-  datacenter = common.PASCALCONTEXT(FLAGS.img_size)
+  #datacenter = common.PASCALCONTEXT(FLAGS.img_size)
 
     # Create a session for running operations in the Graph.
   _x = tf.placeholder(tf.float32)
@@ -296,7 +296,7 @@ def main(args):
 
   init_op = tf.group(tf.global_variables_initializer(),
                      tf.local_variables_initializer())
-  
+
   start = datetime.now()
   print "Start: ",  start.strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -330,7 +330,7 @@ def main(args):
         c = img.shape[2]
         print "  ", filename, img.shape, label.shape
 
-        #label[label==255]=0
+        label[label>=FLAGS.nclass]=0
 
         feed_dict = {_x: img, _y: label}
         _, loss_val = sess.run([opt, loss], feed_dict=feed_dict)
@@ -340,7 +340,7 @@ def main(args):
 
         #images_value, labels_value = sess.run([x, y], feed_dict=feed_dict)
         indexed_out_val = sess.run(indexed_out, feed_dict=feed_dict)
-        
+
         current = datetime.now()
         print "\telapsed:", current - start
 
@@ -352,9 +352,9 @@ def main(args):
           total_vis = cv2.resize(total, (total.shape[1]/2, total.shape[0]/2))
           cv2.imshow('visualization', total_vis)
 
-          if itr%200 == 0:
+          if itr%100 == 0:
             filepath = os.path.join(save_dir, os.path.splitext(filename)[0] + "_est.png")
-            scipy.misc.imsave(filepath, total)
+            scipy.misc.imsave(filepath, cv2.cvtColor(total, cv2.COLOR_BGR2RGB))
         cv2.waitKey(5)
 
         if itr > 1 and itr % 300 == 0:
