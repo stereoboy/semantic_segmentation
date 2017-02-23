@@ -181,18 +181,18 @@ def model_FCN8S(x, y, Ws, Bs, WEs, BEs, WDs, drop_prob = 0.5):
 
   score_pool4 = tf.nn.conv2d(pooled4, WEs['9'], strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
   shape_list = tf.shape(score_pool4)
-  out_shape = tf.pack(shape_list)
+  out_shape = tf.stack(shape_list)
   upscore2 = tf.nn.conv2d_transpose(score_fr, WDs['1'], out_shape, strides=[1, 1, 2, 2], padding='SAME', data_format='NCHW')
   fuse_pool4 = tf.add(upscore2, score_pool4)
 
   score_pool3 = tf.nn.conv2d(pooled3, WEs['10'], strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
   shape_list = tf.shape(score_pool3)
-  out_shape = tf.pack(shape_list)
+  out_shape = tf.stack(shape_list)
   upscore_pool4 = tf.nn.conv2d_transpose(fuse_pool4, WDs['2'], out_shape, strides=[1, 1, 2, 2], padding='SAME', data_format='NCHW')
   fuse_pool3 = tf.add(upscore_pool4, score_pool3)
 
   shape_list = tf.shape(y)
-  out_shape = tf.pack(shape_list)
+  out_shape = tf.stack(shape_list)
   upscore_pool8 = tf.nn.conv2d_transpose(fuse_pool3, WDs['3'], out_shape, strides=[1, 1, 8, 8], padding='SAME', data_format='NCHW')
 
   final_score = upscore_pool8
@@ -285,7 +285,7 @@ def main(args):
 
   logits = tf.reshape(out, shape=[-1, FLAGS.nclass])
   targets = tf.reshape(y, shape=[-1, FLAGS.nclass])
-  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, targets))
+  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=targets))
 
   opt = get_opt(loss, "FCN8S")
 
